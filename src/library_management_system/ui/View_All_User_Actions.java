@@ -4,6 +4,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.sql.*;
+import java.util.Objects;
 import java.util.Vector;
 
 public class View_All_User_Actions extends JFrame {
@@ -11,6 +12,8 @@ public class View_All_User_Actions extends JFrame {
 
     private JTabbedPane tabbedPane;
     private JPanel borrowedPanel, reservationPanel, cartPanel;
+
+    private JDialog loadingDialog;
 
     public View_All_User_Actions(Connection conn) {
         this.conn = conn;
@@ -58,14 +61,71 @@ public class View_All_User_Actions extends JFrame {
         add(buttonPanel, BorderLayout.SOUTH);
     }
 
+    private void showLoadingDialog() {
+        if (loadingDialog == null) {
+            loadingDialog = new JDialog(this, "Loading...", true);
+            JPanel panel = new JPanel();
+            panel.add(new JLabel("Please wait..."));
+            panel.add(new JProgressBar());
+            loadingDialog.getContentPane().add(panel);
+            loadingDialog.setSize(200, 100);
+            loadingDialog.setLocationRelativeTo(this);
+            loadingDialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
+        }
+        SwingUtilities.invokeLater(() -> loadingDialog.setVisible(true));
+    }
+
+    private void hideLoadingDialog() {
+        if (loadingDialog != null) {
+            SwingUtilities.invokeLater(() -> loadingDialog.setVisible(false));
+        }
+    }
+
     private void loadAllData() {
-        try {
-            loadAllBorrowedBooks();
-            loadAllReservations();
-            loadAllCartItems();
-        } catch (SQLException ex) {
-            JOptionPane.showMessageDialog(this, "Error loading data: " + ex.getMessage());
-            ex.printStackTrace();
+        showLoadingDialog();
+        SwingWorker<Void, Void> worker = new SwingWorker<>() {
+            @Override
+            protected Void doInBackground() {
+                try {
+                    loadAllBorrowedBooks();
+                    loadAllReservations();
+                    loadAllCartItems();
+                } catch (SQLException ex) {
+                    SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(View_All_User_Actions.this, "Error loading data: " + ex.getMessage()));
+                    ex.printStackTrace();
+                }
+                return null;
+            }
+            @Override
+            protected void done() {
+                hideLoadingDialog();
+            }
+        };
+        worker.execute();
+    }
+
+    private void updateTableModel(JTable table, Vector<Vector<Object>> newData, Vector<String> columns) {
+        DefaultTableModel model = (DefaultTableModel) table.getModel();
+        if (model.getColumnCount() != columns.size()) {
+            table.setModel(new DefaultTableModel(newData, columns));
+            return;
+        }
+        int rowCount = model.getRowCount();
+        int newRowCount = newData.size();
+        int minRows = Math.min(rowCount, newRowCount);
+        for (int i = 0; i < minRows; i++) {
+            Vector<Object> newRow = newData.get(i);
+            for (int j = 0; j < newRow.size(); j++) {
+                if (!Objects.equals(model.getValueAt(i, j), newRow.get(j))) {
+                    model.setValueAt(newRow.get(j), i, j);
+                }
+            }
+        }
+        for (int i = rowCount; i < newRowCount; i++) {
+            model.addRow(newData.get(i));
+        }
+        for (int i = rowCount - 1; i >= newRowCount; i--) {
+            model.removeRow(i);
         }
     }
 
@@ -111,7 +171,11 @@ public class View_All_User_Actions extends JFrame {
             }
 
             JTable table = (JTable)((JScrollPane)borrowedPanel.getComponent(0)).getViewport().getView();
-            table.setModel(new javax.swing.table.DefaultTableModel(data, columns));
+            if (!(table.getModel() instanceof DefaultTableModel)) {
+                table.setModel(new DefaultTableModel(data, columns));
+            } else {
+                updateTableModel(table, data, columns);
+            }
         }
     }
 
@@ -149,7 +213,11 @@ public class View_All_User_Actions extends JFrame {
             }
 
             JTable table = (JTable)((JScrollPane)reservationPanel.getComponent(0)).getViewport().getView();
-            table.setModel(new javax.swing.table.DefaultTableModel(data, columns));
+            if (!(table.getModel() instanceof DefaultTableModel)) {
+                table.setModel(new DefaultTableModel(data, columns));
+            } else {
+                updateTableModel(table, data, columns);
+            }
         }
     }
 
@@ -187,7 +255,11 @@ public class View_All_User_Actions extends JFrame {
             }
 
             JTable table = (JTable)((JScrollPane)cartPanel.getComponent(0)).getViewport().getView();
-            table.setModel(new javax.swing.table.DefaultTableModel(data, columns));
+            if (!(table.getModel() instanceof DefaultTableModel)) {
+                table.setModel(new DefaultTableModel(data, columns));
+            } else {
+                updateTableModel(table, data, columns);
+            }
         }
     }
 }
